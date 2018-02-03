@@ -30,6 +30,24 @@ static void busy_wait (int64_t loops);
 static void real_time_sleep (int64_t num, int32_t denom);
 static void real_time_delay (int64_t num, int32_t denom);
 
+//semaphore to help eliminate busy waits
+//definition derived from Project1Session.pdf
+struct semaphore{
+	int count;
+	queue Q;
+}
+
+
+
+
+
+
+
+
+
+
+
+
 /* Sets up the timer to interrupt TIMER_FREQ times per second,
    and registers the corresponding interrupt. */
 void
@@ -92,7 +110,8 @@ timer_sleep (int64_t ticks)
   int64_t start = timer_ticks ();
 
   ASSERT (intr_get_level () == INTR_ON);
-  while (timer_elapsed (start) < ticks) 
+  while (timer_elapsed (start) < ticks)
+	  //want to get rid of thread_yield() to avoid busy wait
     thread_yield ();
 }
 
@@ -199,6 +218,7 @@ too_many_loops (unsigned loops)
    Marked NO_INLINE because code alignment can significantly
    affect timings, so that if this function was inlined
    differently in different places the results would be difficult
+   t
    to predict. */
 static void NO_INLINE
 busy_wait (int64_t loops) 
