@@ -93,6 +93,13 @@ struct thread
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
 
+    int basePriority; //Added, this will keep track of our original priority (without donations)
+    struct list donors; //Added, this will hold all of the threads who donated to us
+    struct list_elem donorEle; //Added, this will allow us to pull the donor out of the above list
+    struct thread *prio_recip; //Added, if this is not null then the Donee has donated and we need to check that thread in the chain (for donation chaining)
+    struct lock *blockedOn; //Added, keeps track to what lock we are blocked on, if null we aren't block on any 
+
+
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
@@ -138,4 +145,7 @@ void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
+void donate_priority(void);
+void check_should_yield(void);
+bool compare_priority(struct list_elem *first, struct list_elem *second, void *aux);
 #endif /* threads/thread.h */
