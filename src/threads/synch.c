@@ -284,14 +284,14 @@ lock_release (struct lock *lock)
 
      //For each thread who donated to us
      for(e = list_begin (&thread_current ()->donors); e != list_end(&thread_current ()->donors); e = list_next (e)){
-        struct thread *t = list_entry (e, struct thread, donorEle);
+        struct thread *donorThread = list_entry (e, struct thread, donorEle);
 
 	//If the thread that donated to use wanted the lock that we are currently on
 	//We remove them from the list and tell them that they are no longer blocked on this lock
-	if(t->blockedOn == lock){
+	if(donorThread->blockedOn == lock){
 	   struct list_elem *toRemove = e;
            list_remove(toRemove);
-	   t->blockedOn = NULL;
+	   donorThread->blockedOn = NULL;
 	}
      }
 

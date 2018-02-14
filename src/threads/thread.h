@@ -89,14 +89,19 @@ struct thread
     uint8_t *stack;                     /* Saved stack pointer. */
     int priority;                       /* Priority. */
     struct list_elem allelem;           /* List element for all threads list. */
-
+    
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
+    
+    //Busy Sleep stuff:
+    int64_t tsleeps;
+    struct list_elem wait_list_elem;
 
+    //Prio Stuff
     int basePriority; //Added, this will keep track of our original priority (without donations)
     struct list donors; //Added, this will hold all of the threads who donated to us
     struct list_elem donorEle; //Added, this will allow us to pull the donor out of the above list
-    struct thread *prio_recip; //Added, if this is not null then the Donee has donated and we need to check that thread in the chain (for donation chaining)
+   
     struct lock *blockedOn; //Added, keeps track to what lock we are blocked on, if null we aren't block on any 
 
 

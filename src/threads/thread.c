@@ -499,7 +499,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->magic = THREAD_MAGIC;
 
   t->basePriority = priority;
-  t->prio_recip = NULL;
+  //t->prio_recip = NULL;
   t->blockedOn = NULL;
   list_init(&t->donors);
   
