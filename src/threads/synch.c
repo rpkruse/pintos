@@ -306,8 +306,7 @@ lock_release (struct lock *lock)
 
 	//If our priority is less than the max donors priority, we set ours to theirs and yield to them
 	if(thread_current ()->priority < maxDonorThread->priority){
-           thread_current ()->priority = maxDonorThread->priority;
-	   thread_yield();
+           thread_current ()->priority = maxDonorThread->priority; 
 	}
      }
   }
