@@ -341,6 +341,10 @@ thread_foreach (thread_action_func *func, void *aux)
 }
 
 /* Sets the current thread's priority to NEW_PRIORITY. */
+/*
+ * Inspired by Nekketsuing, note: my original method was very similar, but
+ * was not working for all the test cases
+ */
 void
 thread_set_priority (int new_priority) 
 {
@@ -622,6 +626,9 @@ allocate_tid (void)
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
 
+/*
+ * Inspired by Nekketsuing 
+ */
 void donate_priority(void){
    struct thread *t = thread_current ();
    struct lock *l = t->blockedOn;

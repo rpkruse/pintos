@@ -262,6 +262,10 @@ lock_try_acquire (struct lock *lock)
    An interrupt handler cannot acquire a lock, so it does not
    make sense to try to release a lock within an interrupt
    handler. */
+
+/*
+ * Inspired by: Waqee from GitHub
+ */
 void
 lock_release (struct lock *lock) 
 {

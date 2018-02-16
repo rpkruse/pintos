@@ -113,6 +113,7 @@ timer_sleep (int64_t ticks)
   ASSERT (intr_get_level () == INTR_ON);
 
   enum intr_level old_level = intr_disable();
+ 
   struct thread *t = thread_current();
 
   t->tsleeps = start + ticks;
@@ -204,14 +205,24 @@ timer_interrupt (struct intr_frame *args UNUSED)
   thread_tick ();
 
   struct list_elem *l;
-  for(l = list_begin(&sleeping_threads); l != list_end(&sleeping_threads);){
-     struct thread *t = list_entry (l, struct thread, wait_list_elem);
+  struct thread *t;
 
-     if(ticks >= t->tsleeps){
-        l = list_remove(l);
-	thread_unblock(t);
-     }else{
-        l = list_next(l);
+  bool canRemove = true;
+  //While we can keep removing the lowest wait time node from our waiting list
+  while(canRemove){
+     if(!list_empty(&sleeping_threads)){
+        l = list_pop_front (&sleeping_threads);
+        t = list_entry(l, struct thread, wait_list_elem);
+
+	//If the front node is ready to wake up we unblock it
+        if(ticks >= t->tsleeps){
+           thread_unblock(t);
+        }else{//Otherwise we put it back at the front (b/c we know it is the lowest) and stop checking
+           list_push_front (&sleeping_threads, l);
+	   canRemove = false;
+        }
+     }else{//If our list is empty we have nothing to loop over
+        canRemove = false;
      }
   }
 }
