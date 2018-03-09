@@ -93,9 +93,15 @@ struct thread
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
 
-    bool wasExecuted; //I ADDED
-    struct thread *parent; //I ADDED
+    /* PROJ 2 FIELDS */
+    bool wasExecuted; 
+    struct thread *parent;
 
+    int fd_count;
+    int exit_error;
+    struct list files;
+
+    /* END OF PROJ 2 FIELDS */
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */

@@ -29,6 +29,8 @@ tid_t
 process_execute (const char *file_name) 
 {
   char *fn_copy;
+  char *parsed_file_name;
+
   tid_t tid;
 
   /* Make a copy of FILE_NAME.
@@ -38,8 +40,17 @@ process_execute (const char *file_name)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
 
+  /*OUR CODE*/
+  char *save_ptr;
+  parsed_file_name = malloc(strlen(file_name)+1);
+  strlcpy (parsed_file_name, file_name, strlen(file_name)+1);
+  parsed_file_name = strtok_r (parsed_file_name, " ", &save_ptr); 
+  /*END OF OUR CODE*/
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
+  tid = thread_create (parsed_file_name, PRI_DEFAULT, start_process, fn_copy); //Changed file_name to parsed_file_name
+
+  free(parsed_file_name); 
+
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
   return tid;
@@ -88,7 +99,7 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
-  while(!thread_current()->wasExecuted);
+  while(!thread_current()->wasExecuted);//I ADDED
 
   return -1;
 }
@@ -99,6 +110,12 @@ process_exit (void)
 {
   struct thread *cur = thread_current ();
   uint32_t *pd;
+
+  /*OUR CODE*/
+  int exit_code = cur->exit_error;
+  printf("%s: exit(%d)\n", cur->name, exit_code); 
+  close_files(&thread_current()->files);
+  /*OUR CODE*/
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
@@ -232,7 +249,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
   char *save_ptr;
   fn_copy = strtok_r(fn_copy, " ", &save_ptr);
   file = filesys_open(fn_copy);
-
+  free(fn_copy);
   //file = filesys_open (file_name);
   /*END OF OUR CODE*/
 
@@ -454,18 +471,22 @@ setup_stack (void **esp, char* file_name)
       else
         palloc_free_page (kpage);
     }
+
   /*OUR CODE*/
   char *token, *save_ptr;
   int argc = 0,i;
 
   char *copy = malloc(strlen(file_name)+1);
-  strlcpy (copy, file_name, strlen(file_name));
+  strlcpy (copy, file_name, strlen(file_name)+1);
 
+  //Get the number of arguments passed
   for(token = strtok_r (copy, " ", &save_ptr); token != NULL; token = strtok_r (NULL, " ", &save_ptr))
      argc++;
 
+  //Allot n amount of space for each argument
   int *argv = calloc(argc, sizeof(int));
 
+  //Push the words of the arguments onto the stack
   for(token = strtok_r (file_name, " ", &save_ptr), i=0; token != NULL; token = strtok_r (NULL, " ", &save_ptr), i++){
      *esp -= strlen(token) + 1;
      memcpy(*esp, token, strlen(token) + 1);
@@ -474,6 +495,8 @@ setup_stack (void **esp, char* file_name)
      argv[i] = *esp;
   }
 
+  //Not sure what this does (maybe adds ending \0 to each arg????)
+  //Do word-aligned access here (round down the pointer to a multiple of four)
   while((int) *esp % 4 != 0){
      *esp -= sizeof(char);
      char x = 0;
@@ -482,23 +505,31 @@ setup_stack (void **esp, char* file_name)
 
   int zero = 0;
 
+  //Push null pointer sentinel to the stack
   *esp -= sizeof(int);
   memcpy(*esp, &zero, sizeof(int));
 
+  //Push the addresses of each word in right to left order to the stack
   for(i=argc-1; i>=0; i--){
      *esp -= sizeof(int);
      memcpy(*esp, &argv[i], sizeof(int));
   }
 
+  //Push argv onto the stack
   int pt = *esp;
   *esp -= sizeof(int);
   memcpy(*esp, &pt, sizeof(int));
 
+  //Push argc onto the stack
   *esp -= sizeof(int);
   memcpy(*esp, &argc, sizeof(int));
 
+  //Push fake return address (of 0) onto the stack
   *esp -= sizeof(int);
   memcpy(*esp, &zero, sizeof(int));
+
+  free(copy);
+  free(argv);
 
   //hex_dump(*esp, *esp, PHYS_BASE-(*esp), true);
   /*END OF OUR CODE*/
