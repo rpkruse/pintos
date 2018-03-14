@@ -4,7 +4,7 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
-
+#include <threads/synch.h>
 /* States in a thread's life cycle. */
 enum thread_status
   {
@@ -94,12 +94,20 @@ struct thread
     struct list_elem elem;              /* List element. */
 
     /* PROJ 2 FIELDS */
-    bool wasExecuted; 
-    struct thread *parent;
+    bool success; //If the proc did what it wanted to do successfully 
+    
+    struct thread *parent; //the thread's parent
 
-    int fd_count;
-    int exit_error;
-    struct list files;
+    int fd_count;//The FD count for each file that the thread is using (starts at 2 fd_count++ per file)
+    int exit_error; //The error code returned after the proc does ____
+    int bad_exit_val;
+    
+    struct file *self; //The procs own file (usually exec)
+    struct list files; //All the files the proc is using
+    struct list child_proc; //All of the procs child procs
+  
+    struct semaphore child_lock; //Lock for the proc's children
+    int waitingOn; //What child we are waiting on (TID)
 
     /* END OF PROJ 2 FIELDS */
 #ifdef USERPROG
@@ -110,6 +118,15 @@ struct thread
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
   };
+
+/*OUR CODE*/
+struct child{
+   int tid;
+   struct list_elem elem;
+   int exit_error;
+   bool used;
+};
+/*END OF OUR CODE*/
 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.

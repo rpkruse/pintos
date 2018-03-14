@@ -21,6 +21,8 @@
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
 
+extern struct list all_list; //I ADDED, a list to hold all running threads
+
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
    before process_execute() returns.  Returns the new process's
@@ -31,7 +33,7 @@ process_execute (const char *file_name)
   char *fn_copy;
   char *parsed_file_name;
 
-  tid_t tid;
+  tid_t tid = TID_ERROR;
 
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
@@ -41,6 +43,7 @@ process_execute (const char *file_name)
   strlcpy (fn_copy, file_name, PGSIZE);
 
   /*OUR CODE*/
+  //Parse the file on spaces
   char *save_ptr;
   parsed_file_name = malloc(strlen(file_name)+1);
   strlcpy (parsed_file_name, file_name, strlen(file_name)+1);
@@ -52,7 +55,14 @@ process_execute (const char *file_name)
   free(parsed_file_name); 
 
   if (tid == TID_ERROR)
-    palloc_free_page (fn_copy); 
+    palloc_free_page (fn_copy);
+
+  /*OUR CODE*/
+  sema_down(&thread_current()->child_lock); //Wait for the lock to execute
+
+  if(!thread_current()->success)//If we fail to exec we need to return -1
+     return -1;
+  /*END OF OUR CODE*/
   return tid;
 }
 
@@ -74,8 +84,20 @@ start_process (void *file_name_)
 
   /* If load failed, quit. */
   palloc_free_page (file_name);
-  if (!success) 
+
+  /*OUR CODE*/
+  //If we do not successfully start a process,
+  //we set its success to false, release the lock, and exit
+  if (!success){ 
+    thread_current()->parent->success = false;
+    sema_up(&thread_current()->parent->child_lock);
     thread_exit ();
+  }else{//If we do start successfully, we set the success to true and sema_up
+     thread_current()->parent->success = true;
+     sema_up(&thread_current()->parent->child_lock);
+  }
+
+  /*END OF OUR CODE*/
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -97,11 +119,40 @@ start_process (void *file_name_)
    This function will be implemented in problem 2-2.  For now, it
    does nothing. */
 int
-process_wait (tid_t child_tid UNUSED) 
+process_wait (tid_t child_tid) //CHANGED
 {
-  while(!thread_current()->wasExecuted);//I ADDED
+   struct list_elem *e;
 
-  return -1;
+   struct child *child = NULL;
+   struct list_elem *e1 = NULL;
+
+   //Check to see if we have any children to wait on
+   for(e = list_begin (&thread_current()->child_proc); e != list_end (&thread_current()->child_proc); e = list_next (e)){
+      struct child *f = list_entry (e, struct child, elem);
+
+      if(f->tid == child_tid){
+         child = f;
+	 e1 = e;
+      }
+   }
+
+   //If there are no children, return -1, we can't wait on nothing
+   if(!child || !e1) 
+      return -1;
+
+   //If we have a child, we set our waiting on to their tid
+   thread_current()->waitingOn = child->tid;
+
+   //If the child is not done, we have them wait for the lock
+   if(!child->used){
+      sema_down(&thread_current()->child_lock); 
+   }
+
+   //When we are here, the child is done doing ____ we return their error code
+   int err = child->exit_error;
+   list_remove(e1); //Remove the child from our list of children (e1 is our reference to it in the list)
+
+   return err;
 }
 
 /* Free the current process's resources. */
@@ -112,10 +163,20 @@ process_exit (void)
   uint32_t *pd;
 
   /*OUR CODE*/
+  //If our exit error is the same as the initial one then we know one was never set so we should throw an err.
+  if(cur->exit_error == cur->bad_exit_val) 
+     exit(-1);
+
+  //Output that the proc has exited as per request of pintos docs
   int exit_code = cur->exit_error;
   printf("%s: exit(%d)\n", cur->name, exit_code); 
+
+  //Acquire the filsys lock and close all of our files (and maybe ourself if we did exec)
+  acquire_filesys_lock();
+  file_close(thread_current()->self);
   close_files(&thread_current()->files);
-  /*OUR CODE*/
+  release_filesys_lock();
+  /*END OF OUR CODE*/
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
@@ -234,6 +295,8 @@ load (const char *file_name, void (**eip) (void), void **esp)
   bool success = false;
   int i;
 
+  acquire_filesys_lock(); //I ADDED
+  
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create ();
   if (t->pagedir == NULL) 
@@ -243,11 +306,13 @@ load (const char *file_name, void (**eip) (void), void **esp)
   /* Open executable file. */
 
   /*OUR CODE*/
+  //Parse the file to load on spaces
   char *fn_copy = malloc(strlen(file_name)+1);
   strlcpy(fn_copy, file_name, strlen(file_name)+1);
 
   char *save_ptr;
   fn_copy = strtok_r(fn_copy, " ", &save_ptr);
+
   file = filesys_open(fn_copy);
   free(fn_copy);
   //file = filesys_open (file_name);
@@ -340,9 +405,15 @@ load (const char *file_name, void (**eip) (void), void **esp)
 
   success = true;
 
+  /*OUR CODE*/
+  file_deny_write(file);
+  thread_current()->self = file;
+  /*END OF OUR CODE*/
+
  done:
   /* We arrive here whether the load is successful or not. */
-  file_close (file);
+  //file_close (file);
+  release_filesys_lock();
   return success;
 }
 
@@ -428,15 +499,15 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 
       /* Get a page of memory. */
       uint8_t *kpage = palloc_get_page (PAL_USER);
-      if (kpage == NULL)
-        return false;
+      if(kpage == NULL)
+         return false;
 
-      /* Load this page. */
-      if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes)
-        {
+      /*Load this page. */
+      if(file_read (file, kpage, page_read_bytes) != (int) page_read_bytes)
+      {
           palloc_free_page (kpage);
           return false; 
-        }
+      }
       memset (kpage + page_read_bytes, 0, page_zero_bytes);
 
       /* Add the page to the process's address space. */
@@ -456,6 +527,8 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 
 /* Create a minimal stack by mapping a zeroed page at the top of
    user virtual memory. */
+
+/*inspired by Waqee*/
 static bool
 setup_stack (void **esp, char* file_name) 
 {
@@ -490,13 +563,11 @@ setup_stack (void **esp, char* file_name)
   for(token = strtok_r (file_name, " ", &save_ptr), i=0; token != NULL; token = strtok_r (NULL, " ", &save_ptr), i++){
      *esp -= strlen(token) + 1;
      memcpy(*esp, token, strlen(token) + 1);
-    // hex_dump(*esp, *esp, PHYS_BASE-(*esp), true);
 
      argv[i] = *esp;
   }
 
-  //Not sure what this does (maybe adds ending \0 to each arg????)
-  //Do word-aligned access here (round down the pointer to a multiple of four)
+  //Do word-aligned access here (round down the pointer to a multiple of four) otherwise, we will have strange results
   while((int) *esp % 4 != 0){
      *esp -= sizeof(char);
      char x = 0;
@@ -531,7 +602,6 @@ setup_stack (void **esp, char* file_name)
   free(copy);
   free(argv);
 
-  //hex_dump(*esp, *esp, PHYS_BASE-(*esp), true);
   /*END OF OUR CODE*/
   return success;
 }

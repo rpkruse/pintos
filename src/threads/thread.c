@@ -26,7 +26,7 @@ static struct list ready_list;
 
 /* List of all processes.  Processes are added to this list
    when they are first scheduled and removed when they exit. */
-static struct list all_list;
+struct list all_list;
 
 /* Idle thread. */
 static struct thread *idle_thread;
@@ -36,6 +36,8 @@ static struct thread *initial_thread;
 
 /* Lock used by allocate_tid(). */
 static struct lock tid_lock;
+
+struct lock filesys_lock; //I ADDED
 
 /* Stack frame for kernel_thread(). */
 struct kernel_thread_frame 
@@ -92,6 +94,8 @@ thread_init (void)
   lock_init (&tid_lock);
   list_init (&ready_list);
   list_init (&all_list);
+
+  //lock_init(&filesys_lock); //I ADDED
 
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
@@ -182,6 +186,13 @@ thread_create (const char *name, int priority,
   /* Initialize thread. */
   init_thread (t, name, priority);
   tid = t->tid = allocate_tid ();
+  /*OUR CODE*/
+  struct child *c = malloc(sizeof(*c));
+  c->tid = tid;
+  c->exit_error = t->exit_error;
+  c->used = false;
+  list_push_back (&running_thread()->child_proc, &c->elem);
+  /*END OF OUR CODE*/
 
   /* Stack frame for kernel_thread(). */
   kf = alloc_frame (t, sizeof *kf);
@@ -286,6 +297,13 @@ thread_exit (void)
   process_exit ();
 #endif
 
+  /*OUR CODE*/
+  //When we exit we need to make sure that we free all of the files we had open
+  while(!list_empty(&thread_current()->child_proc)){
+     struct proc_file *file = list_entry (list_pop_front(&thread_current()->child_proc), struct child, elem);
+     free(file);
+  }
+  /*END OF OUR CODE*/
   /* Remove thread from all threads list, set our status to dying,
      and schedule another process.  That process will destroy us
      when it calls thread_schedule_tail(). */
@@ -451,7 +469,7 @@ is_thread (struct thread *t)
 static void
 init_thread (struct thread *t, const char *name, int priority)
 {
-  enum intr_level old_level;
+//  enum intr_level old_level;
 
   ASSERT (t != NULL);
   ASSERT (PRI_MIN <= priority && priority <= PRI_MAX);
@@ -464,14 +482,21 @@ init_thread (struct thread *t, const char *name, int priority)
   t->priority = priority;
   t->magic = THREAD_MAGIC;
 
-  t->fd_count = 2;
-  t->wasExecuted = false; //I ADDED
-  t->parent = running_thread(); //I ADDED
-  list_init (&t->files); //I ADDED
+  /*OUR CODE*/
+  t->bad_exit_val = -42;
+  t->exit_error = t->bad_exit_val; //Give arbitrary to check if the proc failed or not
+  t->fd_count = 2; //Start at 2, (0 & 1) are used by pintos by default
+  list_init (&t->child_proc); //Init our list of children
+  t->parent = running_thread(); //Set our parent to the running thread
+  list_init (&t->files); //Init our list of files
+  sema_init(&t->child_lock, 0);//Init our lock for the children
+  t->waitingOn = 0;//Set our waiting on to 0 (there will never be a TID 0 for us)
+  t->self = NULL;//We won't have a file open on init.
+  /*END OF OUR CODE*/
 
-  old_level = intr_disable ();
+ // old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
-  intr_set_level (old_level);
+ // intr_set_level (old_level);
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and
@@ -587,3 +612,11 @@ allocate_tid (void)
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
+
+void acquire_filesys_lock(){
+   lock_acquire(&filesys_lock);
+}
+
+void release_filesys_lock(){
+   lock_release(&filesys_lock);
+}
